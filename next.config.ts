@@ -12,7 +12,8 @@ const nextConfig: NextConfig = {
       },
     },
   },
-  allowedDevOrigins: ["192.168.10.111"],
+  allowedDevOrigins: ["192.168.10.111","172.29.96.1"],
+  serverExternalPackages: ['nodejs-polars'],
 };
 
 export default nextConfig;

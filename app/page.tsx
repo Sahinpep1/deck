@@ -1,18 +1,13 @@
-'use client';
-import { useState } from 'react';
-import dynamic from 'next/dynamic';
+import { getMapData ,getSalesRepSummary } from '../lib/dataService';
+import MapContainer from './MapContainer';
 
-// SSR'ı kapatarak DeckMap bileşenini dinamik olarak yüklüyoruz
-const DeckMap = dynamic(() => import('./DeckMap'), { 
-  ssr: false,
-  loading: () => <p>Harita yükleniyor...</p>
-});
-
-export default function Home() {
-  const [selectedPoints, setSelectedPoints] = useState<any[]>([]);
+export default async function Home() {
+  // Verileri sunucu tarafında Polars ile çekiyoruz
+  const initialData = await getMapData();
+  const salesRepSummary = await getSalesRepSummary();
   return (
     <main style={{ margin: 0, padding: 0, overflow: 'hidden', width: '100vw', height: '100vh' }}>
-      <DeckMap selectedPoints={selectedPoints} onSelectionChange={setSelectedPoints} />
+      <MapContainer initialData={initialData} salesRepSummary={salesRepSummary} />
     </main>
   );
 }

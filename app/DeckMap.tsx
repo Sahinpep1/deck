@@ -3,13 +3,11 @@
 import React, { useState, useRef, useMemo } from 'react';
 import DeckGL from '@deck.gl/react';
 import { Map, MapRef } from 'react-map-gl/maplibre';
-import { IconLayer ,TextLayer } from '@deck.gl/layers';
+import { IconLayer, TextLayer } from '@deck.gl/layers';
 import booleanPointInPolygon from '@turf/boolean-point-in-polygon';
 import { polygon, point } from '@turf/helpers';
 
-import * as maplibregl from 'maplibre-gl'; 
 import 'maplibre-gl/dist/maplibre-gl.css';
-
 
 const INITIAL_VIEW_STATE = {
   longitude: 36.1633,
@@ -19,89 +17,79 @@ const INITIAL_VIEW_STATE = {
   bearing: 0
 };
 
-// Plasiyer Renkleri
-const SALESREP_COLORS: Record<string, [number, number, number]> = {
-  'Ahmet Yılmaz': [255, 99, 71],   // Kırmızı
-  'Mehmet Demir': [30, 144, 255],  // Mavi
-  'Ayşe Kaya': [60, 179, 113],    // Yeşil
-};
-
-const INITIAL_DATA = [
-  { id: 1, coordinates: [36.1600, 36.2000], salesrep: 'Mehmet Demir', customer: 'Market A' },
-  { id: 2, coordinates: [36.1700, 36.2100], salesrep: 'Mehmet Demir', customer: 'Market B' },
-  { id: 3, coordinates: [36.1500, 36.1900], salesrep: 'Ayşe Kaya', customer: 'Market C' },
-];
-const getInitials = (name: string) => {
-  return name
-    .split(' ')
-    .map(word => word[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2); // En fazla 2 harf (MD, AY vb.)
-};
-
-export default function DeckMap({ selectedPoints, onSelectionChange }: { selectedPoints: any[], onSelectionChange: (points: any[]) => void }) {
-  const [myData] = useState(INITIAL_DATA);
+/**
+ * Plasiyer isminden dinamik, tutarlı ve okunabilir bir RGB renk üretir.
+ */
+const getSalesRepColor = (name: string): [number, number, number] => {
+  if (!name) return [150, 150, 150]; // İsim yoksa gri
   
-  const [popupInfo, setPopupInfo] = useState<any>(null);
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
 
+  // Renklerin çok karanlık veya soluk olmaması için HSL mantığına benzer bir taban seçiyoruz
+  const r = (hash & 0xFF) % 180 + 50;     // 50 ile 230 arası
+  const g = ((hash >> 8) & 0xFF) % 180 + 50; 
+  const b = ((hash >> 16) & 0xFF) % 180 + 50;
+
+  return [r, g, b];
+};
+
+export default function DeckMap({ initialData , salesRepSummary }: { initialData: any[]; salesRepSummary: any[] }) {
+  const [myData] = useState(initialData || []);
+  const [selectedPoints, setSelectedPoints] = useState<any[]>([]);
+  //console.log("myData içeriği:", myData);
+  //console.log("İlk elemanın parametreleri:", myData[0]);
+  const [popupInfo, setPopupInfo] = useState<any>(null);
   const [isLassoActive, setIsLassoActive] = useState(false);
   const [isDrawing, setIsDrawing] = useState(false);
   const [pixelPath, setPixelPath] = useState<Array<[number, number]>>([]);
 
   const mapRef = useRef<MapRef>(null);
 
-const pointsLayer = useMemo(() => {
-  return [
-    // 1. Pin Katmanı
-    new IconLayer({
-      id: 'salesrep-points',
-      data: myData,
-      getPosition: (d: any) => d.coordinates,
-      iconAtlas: '/marker.png', 
-      iconMapping: {
-        marker: { 
-          x: 0, 
-          y: 0, 
-          width: 512, 
-          height: 512, 
-          anchorY: 512, 
-          mask: true 
+  const pointsLayer = useMemo(() => {
+    return [
+      new IconLayer({
+        id: 'salesrep-points',
+        data: myData,
+        getPosition: (d: any) => d.coordinates,
+        iconAtlas: '/marker.png', 
+        iconMapping: {
+          marker: { x: 0, y: 0, width: 512, height: 512, anchorY: 512, mask: true }
+        },
+        getIcon: () => 'marker',
+        // Dinamik renk fonksiyonu her plasiyer için otomatik renk üretir
+        getColor: (d: any) => getSalesRepColor(d.salesrep),
+        sizeScale: 1,
+        getSize: 35,
+        pickable: !isLassoActive,
+        onClick: (info: any) => {
+          if (info.object && !isLassoActive) {
+            setPopupInfo(info.object);
+          }
         }
-      },
-      getIcon: () => 'marker',
-      getColor: (d: any) => SALESREP_COLORS[d.salesrep] || [150, 150, 150],
-      sizeScale: 1,
-      getSize: 35,
-      pickable: !isLassoActive,
-      onClick: (info: any) => {
-        if (info.object && !isLassoActive) {
-          setPopupInfo(info.object);
-        }
-      }
-    }),
-
-    // 2. Baş Harf Yazı Katmanı
-    new TextLayer({
-      id: 'salesrep-initials',
-      data: myData,
-      getPosition: (d: any) => d.coordinates,
-      getText: (d: any) => {
-        const name = d.salesrep || '';
-        return name.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2);
-      },
-      getSize: 14,
-      getColor: [255, 255, 255],
-      getAngle: 0,
-      getTextAnchor: 'middle',
-      getAlignmentBaseline: 'center',
-      getPixelOffset: [0, -20],
-      fontFamily: 'Arial, sans-serif',
-      fontWeight: 'bold',
-      pickable: false, // Yazıların tıklanmasını engeller, tıklama altındaki pine gider
-    })
-  ];
-}, [myData, isLassoActive]); // <-- Dikkat: Tüm bağımlılıklar burada eksiksiz olmalı!
+      }),
+      new TextLayer({
+        id: 'salesrep-initials',
+        data: myData,
+        getPosition: (d: any) => d.coordinates,
+        getText: (d: any) => {
+          const name = d.salesrep || '';
+          return name.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2);
+        },
+        getSize: 14,
+        getColor: [255, 255, 255],
+        getAngle: 0,
+        getTextAnchor: 'middle',
+        getAlignmentBaseline: 'center',
+        getPixelOffset: [0, -20],
+        fontFamily: 'Arial, sans-serif',
+        fontWeight: 'bold',
+        pickable: false,
+      })
+    ];
+  }, [myData, isLassoActive]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (!isLassoActive) return;
@@ -134,14 +122,13 @@ const pointsLayer = useMemo(() => {
         booleanPointInPolygon(point(d.coordinates), drawnPolygon)
       );
 
-      onSelectionChange(matched);
+      setSelectedPoints(matched);
     }
     setPixelPath([]);
   };
 
   return (
-    <div className='grid grid-cols-2 relative'>
-       <div 
+    <div 
       style={{ 
         width: '100vw', 
         height: '100vh', 
@@ -159,11 +146,10 @@ const pointsLayer = useMemo(() => {
         layers={[pointsLayer]}
         style={{ width: '100%', height: '100%', position: 'absolute' }}
       >
-       <Map
+        <Map
           ref={mapRef}
           reuseMaps
           mapboxAccessToken=""
-          // Standart OpenStreetMap Raster katmanı (Sokaklar ve detaylar tam görünür)
           mapStyle={{
             version: 8,
             sources: {
@@ -200,12 +186,13 @@ const pointsLayer = useMemo(() => {
         </svg>
       )}
 
-      {/* Arayüz Butonları ve Paneller (Tailwind ile) */}
-      <div className="absolute top-5 left-5 bg-white p-3 rounded-lg shadow-lg z-10">
-        <button 
+      {/* Arayüz Butonları ve Paneller */}
+      <div className="absolute top-5 left-5 rounded-lg shadow-lg z-10 flex flex-col gap-4 max-w-xs">
+        <div className=" bg-white p-1 rounded-lg">
+          <button 
           onClick={() => {
             setIsLassoActive(!isLassoActive);
-            onSelectionChange([]);
+            setSelectedPoints([]);
             setPixelPath([]);
           }}
           className={`px-4 py-2 rounded-md font-bold text-white transition-colors cursor-pointer ${
@@ -214,23 +201,57 @@ const pointsLayer = useMemo(() => {
         >
           {isLassoActive ? 'Lasso Modunu Kapat' : 'Lasso ile Alan Seç'}
         </button>
-      </div>
-    <div className='absolute top-5 right-5 z-10 flex flex-col gap-4 max-w-xs'>
-          <div className=" bg-white p-4 rounded-lg shadow-lg z-10 max-w-xs">
-        <h3 className="font-bold text-gray-800 mb-1">Lasso Seçim Özeti</h3>
-        <p className="text-sm text-gray-600">Seçilen Müşteri Sayısı: <span className="font-bold text-blue-600">{selectedPoints.length}</span></p>
-        <ul className="max-h-36 overflow-y-auto pl-4 mt-2 text-sm text-gray-700">
-          {selectedPoints.map(p => (
-            <li key={p.id} className="list-disc">{p.customer} ({p.salesrep})</li>
+        </div>
+        <div id ="toplam" className="bg-white p-4 rounded-lg shadow-lg z-10 max-w-xs">
+          <h3 className="font-bold text-gray-800 mb-1">Tüm Siparişler</h3>
+          <p className="text-sm text-gray-600">Tüm Siparişler: <span className="font-bold text-blue-600">{myData.length}</span></p>
+          <p className="text-sm text-gray-600">Toplam Koli: <span className="font-bold text-blue-600">{myData.reduce((acc, p) => acc + (p.totalQuantity || 0), 0)}</span></p>
+          <p className="text-sm text-gray-600">Toplam Palet: <span className="font-bold text-blue-600">{myData.reduce((acc, p) => acc + (p.totalPallet || 0), 0).toFixed(2)}</span></p>
+        </div>  
+        <div className="bg-white p-4 rounded-lg shadow-lg z-10 max-w-xs">
+  <h3 className="font-bold text-gray-800 mb-2 border-b pb-1">Plasiyer Özet Tablosu</h3>
+  
+  {salesRepSummary && salesRepSummary.length > 0 ? (
+    <div className="max-h-60 overflow-y-auto">
+      <table className="w-full text-left text-xs text-gray-600 border-collapse">
+        <thead>
+          <tr className="border-b text-gray-400">
+            <th className="py-1">Plasiyer</th>
+            <th className="py-1 text-right">Koli</th>
+            <th className="py-1 text-right">Palet</th>
+          </tr>
+        </thead>
+        <tbody>
+          {salesRepSummary.map((item: any, index: number) => (
+            <tr key={index} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
+              <td className="py-1.5 font-medium text-gray-700">{item.salesrep}</td>
+              <td className="py-1.5 text-right font-bold text-blue-600">{item.totalQuantity}</td>
+              <td className="py-1.5 text-right font-bold text-blue-600">{item.totalPallet?.toFixed(2)}</td>
+            </tr>
           ))}
-        </ul>
-      </div>
-      <div className=" bg-white p-4 rounded-lg shadow-lg z-10 max-w-xs">
-        <h3 className="font-bold text-gray-800 mb-1">bU SADECE DENEME</h3>
-        
-      </div>
+        </tbody>
+      </table>
     </div>
-      
+  ) : (
+    <p className="text-xs text-gray-400">Veri yok.</p>
+  )}
+</div>
+      </div>
+
+      <div id="secilenler" className="absolute top-5 right-5 z-10 flex flex-col gap-4 max-w-xs">
+        <div className="bg-white p-4 rounded-lg shadow-lg z-10 max-w-xs">
+          <h3 className="font-bold text-gray-800 mb-1">Lasso Seçim Özeti</h3>
+          <p className="text-sm text-gray-600">Seçilen Müşteri Sayısı: <span className="font-bold text-blue-600">{selectedPoints.length}</span></p>
+          <p className="text-sm text-gray-600">Seçilen Toplam Koli: <span className="font-bold text-blue-600">{selectedPoints.reduce((acc, p) => acc + (p.totalQuantity || 0), 0)}</span></p>
+          <p className="text-sm text-gray-600">Seçilen Toplam Palet: <span className="font-bold text-blue-600">{selectedPoints.reduce((acc, p) => acc + (p.totalPallet || 0), 0).toFixed(2)}</span></p>
+          <ul className="max-h-36 overflow-y-auto pl-4 mt-2 text-sm text-gray-700">
+            {selectedPoints.map(p => (
+              <li key={p.id} className="list-disc">{p.customer} ({p.salesrep})</li>
+            ))}
+          </ul>
+        </div>
+        {/* buraya başka bir panel eklenebilir */}   
+      </div>
 
       {popupInfo && (
         <div className="absolute bottom-5 left-5 bg-white p-4 rounded-lg shadow-lg z-10 min-w-[200px] border border-gray-100">
@@ -238,8 +259,17 @@ const pointsLayer = useMemo(() => {
           <p className="text-sm text-gray-600 mb-1">
             <span className="font-semibold text-gray-700">İsim:</span> {popupInfo.customer}
           </p>
+          <p className="text-sm text-gray-600 mb-1">
+            <span className="font-semibold text-gray-700">Id:</span> {popupInfo.id}
+          </p>
           <p className="text-sm text-gray-600 mb-3">
             <span className="font-semibold text-gray-700">Plasiyer:</span> {popupInfo.salesrep}
+          </p>
+          <p className="text-sm text-gray-600 mb-3">
+            <span className="font-semibold text-gray-700">Toplam Koli:</span> {popupInfo.totalQuantity}
+          </p>
+          <p className="text-sm text-gray-600 mb-3">
+            <span className="font-semibold text-gray-700">Toplam Palet:</span> {popupInfo.totalPallet.toFixed(2)}
           </p>
           <button 
             onClick={() => setPopupInfo(null)}
@@ -248,9 +278,7 @@ const pointsLayer = useMemo(() => {
             Kapat
           </button>
         </div>
-)}
+      )}
     </div>
-    </div>
-   
   );
 }
