@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import DeckGL from '@deck.gl/react';
 import { Map, MapRef } from 'react-map-gl/maplibre';
 import { IconLayer, TextLayer } from '@deck.gl/layers';
@@ -9,13 +9,7 @@ import { polygon, point } from '@turf/helpers';
 
 import 'maplibre-gl/dist/maplibre-gl.css';
 
-const INITIAL_VIEW_STATE = {
-  longitude: 36.1633,
-  latitude: 36.2023,
-  zoom: 12,
-  pitch: 0,
-  bearing: 0
-};
+
 
 /**
  * Plasiyer isminden dinamik, tutarlı ve okunabilir bir RGB renk üretir.
@@ -28,8 +22,7 @@ const getSalesRepColor = (name: string): [number, number, number] => {
     hash = name.charCodeAt(i) + ((hash << 5) - hash);
   }
 
-  // Renklerin çok karanlık veya soluk olmaması için HSL mantığına benzer bir taban seçiyoruz
-  const r = (hash & 0xFF) % 180 + 50;     // 50 ile 230 arası
+  const r = (hash & 0xFF) % 180 + 50;     
   const g = ((hash >> 8) & 0xFF) % 180 + 50; 
   const b = ((hash >> 16) & 0xFF) % 180 + 50;
 
@@ -39,27 +32,64 @@ const getSalesRepColor = (name: string): [number, number, number] => {
 export default function DeckMap({ initialData , salesRepSummary }: { initialData: any[]; salesRepSummary: any[] }) {
   const [myData] = useState(initialData || []);
   const [selectedPoints, setSelectedPoints] = useState<any[]>([]);
-  //console.log("myData içeriği:", myData);
-  //console.log("İlk elemanın parametreleri:", myData[0]);
   const [popupInfo, setPopupInfo] = useState<any>(null);
   const [isLassoActive, setIsLassoActive] = useState(false);
   const [isDrawing, setIsDrawing] = useState(false);
   const [pixelPath, setPixelPath] = useState<Array<[number, number]>>([]);
+  
+  const [selectedSalesReps, setSelectedSalesReps] = useState<string[]>([]);
 
+  // Sağ tık menüsü için state'ler
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; point: any } | null>(null);
+  const [viewState, setViewState] = useState({
+  longitude: 36.1633,
+  latitude: 36.2023,
+  zoom: 12,
+  pitch: 0,
+  bearing: 0
+});
   const mapRef = useRef<MapRef>(null);
 
+  // Sayfanın herhangi bir yerine tıklandığında sağ tık menüsünü kapat
+  useEffect(() => {
+    const handleClickOutside = () => setContextMenu(null);
+    window.addEventListener('click', handleClickOutside);
+    return () => window.removeEventListener('click', handleClickOutside);
+  }, []);
+
+  const filteredData = useMemo(() => {
+    if (selectedSalesReps.length === 0) return myData;
+    return myData.filter(d => selectedSalesReps.includes(d.salesrep));
+  }, [myData, selectedSalesReps]);
+  // Popup üzerinden seçilenlere ekleme/kaldırma fonksiyonu
+  const handleToggleSelectPoint = (pointObj: any) => {
+    setSelectedPoints(prev => {
+      const exists = prev.some(p => p.id === pointObj.id);
+      if (exists) {
+        // Eğer zaten varsa listeden çıkar
+        return prev.filter(p => p.id !== pointObj.id);
+      } else {
+        // Eğer yoksa listeye ekle
+        return [...prev, pointObj];
+      }
+    });
+  };
   const pointsLayer = useMemo(() => {
+    // Seçili olan ve seçili olmayan noktaları birbirinden ayıralım
+    const unselectedData = filteredData.filter(d => !selectedPoints.some(p => p.id === d.id));
+    const selectedData = filteredData.filter(d => selectedPoints.some(p => p.id === d.id));
+
     return [
+      // 1. Normal Noktalar Katmanı
       new IconLayer({
-        id: 'salesrep-points',
-        data: myData,
+        id: 'salesrep-points-unselected',
+        data: unselectedData,
         getPosition: (d: any) => d.coordinates,
-        iconAtlas: '/marker.png', 
+        iconAtlas: '/marker.png',
         iconMapping: {
           marker: { x: 0, y: 0, width: 512, height: 512, anchorY: 512, mask: true }
         },
         getIcon: () => 'marker',
-        // Dinamik renk fonksiyonu her plasiyer için otomatik renk üretir
         getColor: (d: any) => getSalesRepColor(d.salesrep),
         sizeScale: 1,
         getSize: 35,
@@ -70,9 +100,30 @@ export default function DeckMap({ initialData , salesRepSummary }: { initialData
           }
         }
       }),
+      // 2. Seçili Noktalar Katmanı (Farklı ikon ile)
+      new IconLayer({
+        id: 'salesrep-points-selected',
+        data: selectedData,
+        getPosition: (d: any) => d.coordinates,
+        iconAtlas: '/selected.png',
+        iconMapping: {
+          selected: { x: 0, y: 0, width: 512, height: 512, anchorY: 512, mask: false }
+        },
+        getIcon: () => 'selected',
+        getColor: [255, 255, 255], // mask: false olduğu için kendi renklerini korurlar
+        sizeScale: 1,
+        getSize: 40, // Seçili olanlar biraz daha büyük görünebilir (isteğe bağlı)
+        pickable: !isLassoActive,
+        onClick: (info: any) => {
+          if (info.object && !isLassoActive) {
+            setPopupInfo(info.object);
+          }
+        }
+      }),
+      // Metin Katmanı (Tüm filtrelenmiş veriler için)
       new TextLayer({
         id: 'salesrep-initials',
-        data: myData,
+        data: filteredData,
         getPosition: (d: any) => d.coordinates,
         getText: (d: any) => {
           const name = d.salesrep || '';
@@ -89,7 +140,40 @@ export default function DeckMap({ initialData , salesRepSummary }: { initialData
         pickable: false,
       })
     ];
-  }, [myData, isLassoActive]);
+  }, [filteredData, isLassoActive, selectedPoints]);
+
+  const handleRowClick = (salesrepName: string) => {
+    setSelectedSalesReps(prev => {
+      if (prev.includes(salesrepName)) {
+        return prev.filter(name => name !== salesrepName);
+      } else {
+        return [...prev, salesrepName];
+      }
+    });
+  };
+
+const handleZoomToPoint = (pointObj: any) => {
+  if (pointObj.coordinates) {
+    const [longitude, latitude] = pointObj.coordinates;
+    
+    setViewState(prev => ({
+      ...prev,
+      longitude,
+      latitude,
+      zoom: 17,
+      transitionDuration: 1000 // Yumuşak geçiş (flyTo efekti) için sürebilirsiniz
+    }));
+    
+    setPopupInfo(pointObj);
+  }
+  setContextMenu(null);
+};
+
+  // Seçilenlerden kaldırma fonksiyonu
+  const handleRemovePoint = (pointId: any) => {
+    setSelectedPoints(prev => prev.filter(p => p.id !== pointId));
+    setContextMenu(null);
+  };
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (!isLassoActive) return;
@@ -118,7 +202,7 @@ export default function DeckMap({ initialData , salesRepSummary }: { initialData
       lngLatCoords.push(lngLatCoords[0]);
       const drawnPolygon = polygon([lngLatCoords]);
 
-      const matched = myData.filter(d => 
+      const matched = filteredData.filter(d => 
         booleanPointInPolygon(point(d.coordinates), drawnPolygon)
       );
 
@@ -141,11 +225,12 @@ export default function DeckMap({ initialData , salesRepSummary }: { initialData
       onMouseUp={handleMouseUp}
     >
       <DeckGL
-        initialViewState={INITIAL_VIEW_STATE}
-        controller={!isDrawing}
-        layers={[pointsLayer]}
-        style={{ width: '100%', height: '100%', position: 'absolute' }}
-      >
+          viewState={viewState}
+          onViewStateChange={(e: any) => setViewState(e.viewState)}
+          controller={!isDrawing}
+          layers={[pointsLayer]}
+          style={{ width: '100%', height: '100%', position: 'absolute' }}
+        >
         <Map
           ref={mapRef}
           reuseMaps
@@ -188,54 +273,82 @@ export default function DeckMap({ initialData , salesRepSummary }: { initialData
 
       {/* Arayüz Butonları ve Paneller */}
       <div className="absolute top-5 left-5 rounded-lg shadow-lg z-10 flex flex-col gap-4 max-w-xs">
-        <div className=" bg-white p-1 rounded-lg">
+        <div className="bg-white p-1 rounded-lg">
           <button 
-          onClick={() => {
-            setIsLassoActive(!isLassoActive);
-            setSelectedPoints([]);
-            setPixelPath([]);
-          }}
-          className={`px-4 py-2 rounded-md font-bold text-white transition-colors cursor-pointer ${
-            isLassoActive ? 'bg-red-500 hover:bg-red-600' : 'bg-blue-500 hover:bg-blue-600'
-          }`}
-        >
-          {isLassoActive ? 'Lasso Modunu Kapat' : 'Lasso ile Alan Seç'}
-        </button>
+            onClick={() => {
+              setIsLassoActive(!isLassoActive);
+              setSelectedPoints([]);
+              setPixelPath([]);
+            }}
+            className={`px-4 py-2 rounded-md font-bold text-white transition-colors cursor-pointer w-full ${
+              isLassoActive ? 'bg-red-500 hover:bg-red-600' : 'bg-blue-500 hover:bg-blue-600'
+            }`}
+          >
+            {isLassoActive ? 'Lasso Modunu Kapat' : 'Lasso ile Alan Seç'}
+          </button>
         </div>
-        <div id ="toplam" className="bg-white p-4 rounded-lg shadow-lg z-10 max-w-xs">
+
+        <div id="toplam" className="bg-white p-4 rounded-lg shadow-lg z-10 max-w-xs">
           <h3 className="font-bold text-gray-800 mb-1">Tüm Siparişler</h3>
           <p className="text-sm text-gray-600">Tüm Siparişler: <span className="font-bold text-blue-600">{myData.length}</span></p>
           <p className="text-sm text-gray-600">Toplam Koli: <span className="font-bold text-blue-600">{myData.reduce((acc, p) => acc + (p.totalQuantity || 0), 0)}</span></p>
           <p className="text-sm text-gray-600">Toplam Palet: <span className="font-bold text-blue-600">{myData.reduce((acc, p) => acc + (p.totalPallet || 0), 0).toFixed(2)}</span></p>
         </div>  
+
         <div className="bg-white p-4 rounded-lg shadow-lg z-10 max-w-xs">
-  <h3 className="font-bold text-gray-800 mb-2 border-b pb-1">Plasiyer Özet Tablosu</h3>
-  
-  {salesRepSummary && salesRepSummary.length > 0 ? (
-    <div className="max-h-60 overflow-y-auto">
-      <table className="w-full text-left text-xs text-gray-600 border-collapse">
-        <thead>
-          <tr className="border-b text-gray-400">
-            <th className="py-1">Plasiyer</th>
-            <th className="py-1 text-right">Koli</th>
-            <th className="py-1 text-right">Palet</th>
-          </tr>
-        </thead>
-        <tbody>
-          {salesRepSummary.map((item: any, index: number) => (
-            <tr key={index} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
-              <td className="py-1.5 font-medium text-gray-700">{item.salesrep}</td>
-              <td className="py-1.5 text-right font-bold text-blue-600">{item.totalQuantity}</td>
-              <td className="py-1.5 text-right font-bold text-blue-600">{item.totalPallet?.toFixed(2)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  ) : (
-    <p className="text-xs text-gray-400">Veri yok.</p>
-  )}
-</div>
+          <div className="flex flex-col gap-1 mb-2 border-b pb-2">
+            <h3 className="font-bold text-gray-800">Plasiyer Özet Tablosu</h3>
+            {selectedSalesReps.length > 0 && (
+              <div>
+                <button 
+                  onClick={() => setSelectedSalesReps([])} 
+                  className="text-xs text-red-500 hover:underline cursor-pointer font-medium"
+                >
+                  Filtreyi Temizle ({selectedSalesReps.length})
+                </button>
+              </div>
+            )}
+          </div>
+          
+          {salesRepSummary && salesRepSummary.length > 0 ? (
+            <div className="max-h-60 overflow-y-auto">
+              <table className="w-full text-left text-xs text-gray-600 border-collapse">
+                <thead>
+                  <tr className="border-b text-gray-400">
+                    <th className="py-1">Nokta</th>
+                    <th className="py-1">Plasiyer</th>
+                    <th className="py-1 text-right">Koli</th>
+                    <th className="py-1 text-right">Palet</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {salesRepSummary.map((item: any, index: number) => {
+                    const isSelected = selectedSalesReps.includes(item.salesrep);
+                    return (
+                      <tr 
+                        key={index} 
+                        onClick={() => handleRowClick(item.salesrep)}
+                        className={`border-b border-gray-50 last:border-0 cursor-pointer transition-colors ${
+                          isSelected ? 'bg-blue-50 font-semibold' : 'hover:bg-gray-50'
+                        }`}
+                      >
+                        <td className="py-1.5 font-medium text-gray-700">{item.totalCustomers}</td>
+                        <td className="py-1.5 font-medium text-gray-700 flex items-center gap-1">
+                          {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-blue-600"></span>}
+                          {item.salesrep}
+                        </td>
+                        <td className="py-1.5 text-right font-bold text-blue-600">{item.totalQuantity}</td>
+                        <td className="py-1.5 text-right font-bold text-blue-600">{item.totalPallet?.toFixed(2)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-xs text-gray-400">Veri yok.</p>
+          )}
+        </div>
       </div>
 
       <div id="secilenler" className="absolute top-5 right-5 z-10 flex flex-col gap-4 max-w-xs">
@@ -246,12 +359,42 @@ export default function DeckMap({ initialData , salesRepSummary }: { initialData
           <p className="text-sm text-gray-600">Seçilen Toplam Palet: <span className="font-bold text-blue-600">{selectedPoints.reduce((acc, p) => acc + (p.totalPallet || 0), 0).toFixed(2)}</span></p>
           <ul className="max-h-36 overflow-y-auto pl-4 mt-2 text-sm text-gray-700">
             {selectedPoints.map(p => (
-              <li key={p.id} className="list-disc">{p.customer} ({p.salesrep})</li>
+              <li 
+                key={p.id} 
+                onContextMenu={(e) => {
+                  e.preventDefault(); // Tarayıcının varsayılan sağ tık menüsünü engelle
+                  setContextMenu({ x: e.clientX, y: e.clientY, point: p });
+                }}
+                className="list-disc cursor-pointer hover:text-blue-600 transition-colors select-none py-0.5"
+                title="İşlem için sağ tıklayın"
+              >
+                {p.totalQuantity} koli, {p.totalPallet?.toFixed(2)} palet {p.id} {p.customer} ({p.salesrep})
+              </li>
             ))}
           </ul>
         </div>
-        {/* buraya başka bir panel eklenebilir */}   
       </div>
+
+      {/* Sağ Tık Özel Açılır Menüsü (Context Menu) */}
+      {contextMenu && (
+        <div 
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+          className="absolute z-50 bg-white shadow-xl rounded-md border border-gray-200 py-1 min-w-[160px] text-xs text-gray-700"
+        >
+          <button
+            onClick={() => handleZoomToPoint(contextMenu.point)}
+            className="w-full text-left px-3 py-2 hover:bg-blue-50 hover:text-blue-600 font-medium transition-colors flex items-center gap-2 cursor-pointer"
+          >
+            📍 Haritada Bul / Yakınlaştır
+          </button>
+          <button
+            onClick={() => handleRemovePoint(contextMenu.point.id)}
+            className="w-full text-left px-3 py-2 hover:bg-red-50 hover:text-red-600 font-medium transition-colors flex items-center gap-2 cursor-pointer border-t border-gray-100"
+          >
+            ❌ Seçilenlerden Kaldır
+          </button>
+        </div>
+      )}
 
       {popupInfo && (
         <div className="absolute bottom-5 left-5 bg-white p-4 rounded-lg shadow-lg z-10 min-w-[200px] border border-gray-100">
@@ -271,12 +414,32 @@ export default function DeckMap({ initialData , salesRepSummary }: { initialData
           <p className="text-sm text-gray-600 mb-3">
             <span className="font-semibold text-gray-700">Toplam Palet:</span> {popupInfo.totalPallet.toFixed(2)}
           </p>
-          <button 
-            onClick={() => setPopupInfo(null)}
-            className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold py-1.5 px-3 rounded transition-colors cursor-pointer"
-          >
-            Kapat
-          </button>
+
+          <div className="flex flex-col gap-2">
+            {/* Dinamik Seçilenlere Ekle / Kaldır Butonu */}
+            {(() => {
+              const isSelected = selectedPoints.some(p => p.id === popupInfo.id);
+              return (
+                <button 
+                  onClick={() => handleToggleSelectPoint(popupInfo)}
+                  className={`w-full text-xs font-semibold py-1.5 px-3 rounded transition-colors cursor-pointer text-white ${
+                    isSelected 
+                      ? 'bg-red-500 hover:bg-red-600' 
+                      : 'bg-blue-500 hover:bg-blue-600'
+                  }`}
+                >
+                  {isSelected ? '❌ Seçilenlerden Kaldır' : '➕ Seçilenlere Ekle'}
+                </button>
+              );
+            })()}
+
+            <button 
+              onClick={() => setPopupInfo(null)}
+              className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold py-1.5 px-3 rounded transition-colors cursor-pointer"
+            >
+              Kapat
+            </button>
+          </div>
         </div>
       )}
     </div>
