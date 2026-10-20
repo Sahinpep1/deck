@@ -40,6 +40,7 @@ async function getProcessedDataFrame() {
     )
     .filter(pl.col('sales_rep_code').isNotNull());
 
+  
   // 4. Müşteri Konumları ve Palet Raporlarını oku & birleştir (Join)
   const customerDf = pl.readParquet(path.join(dataDir, 'Musteri_Listesi.parquet'));
   const palletDf = pl.readParquet(path.join(dataDir, 'Palet_Koli_Raporu.parquet')).withColumns(
@@ -63,19 +64,33 @@ async function getProcessedDataFrame() {
       pl.col('Miktar').div(pl.col('Palet')).round(3).alias('PaletSayisi')
     )
     .join(processedMus, { on: 'id', how: 'left' });
+ // birlesikDf'de olup customerDf'de BULUNMAYAN kayıtları verir
 
+ console.log(joinedDf.columns)
+ const paletOlmayanlar = joinedDf.filter(pl.col("Palet").isNull().or(pl.col("Palet").eq(0))).select("product_code", "PaletSayisi").unique();
+console.log("Palet Raporunda Olmayan Ürünler:", paletOlmayanlar.toString());
+const olmayanlar = birlesikDf.join(processedMus, { on: 'id', how: 'anti' });
+
+console.log("Diğer tabloda olmayanlar:", olmayanlar.toString());
+const missingLocationDf = joinedDf.filter(
+  pl.col("lat").isNull().or(pl.col("lng").isNull().or(pl.col("lat").eq(0).or(pl.col("lng").eq(0))))
+);
+
+console.log("Konumu Olmay2an Müşteriler:", missingLocationDf.toString());
   // Konsol kontrolü
-  console.log('Joined DataFrame:', joinedDf.select("Miktar", "Palet", "PaletSayisi").head(5).toString());
+  //console.log('Joined DataFrame:', joinedDf.select("Miktar", "Palet", "PaletSayisi").head(5).toString());
 
-  return joinedDf;
+  return [joinedDf, missingLocationDf, olmayanlar, paletOlmayanlar];
 }
+
+
 
 /**
  * Harita Bileşeni İçin Nokta (Müşteri) Bazlı Veri Üreten Fonksiyon
  */
 export async function getMapData() {
   try {
-    const joinedDf = await getProcessedDataFrame();
+    const [joinedDf] = await getProcessedDataFrame();
 
     // 6. Nokta (Müşteri) bazında gruplama (Group By)
     const finalDf = joinedDf.groupBy('id').agg(
@@ -111,14 +126,14 @@ export async function getMapData() {
  */
 export async function getSalesRepSummary() {
   try {
-    const joinedDf = await getProcessedDataFrame();
+    const [joinedDf] = await getProcessedDataFrame();
 
     const summaryDf = joinedDf.groupBy('salesrep').agg(
       pl.col('id').nUnique().alias('totalCustomers'),
       pl.col('Miktar').sum().alias('totalQuantity'),
       pl.col('PaletSayisi').sum().alias('totalPallet')
     ).sort('totalQuantity');
-    console.log('Sales Rep Summary:', summaryDf.toString());
+   // console.log('Sales Rep Summary:', summaryDf.toString());
     return summaryDf.toRecords();
   } catch (error) {
     console.error('Sales Rep Summary Error:', error);

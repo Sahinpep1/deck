@@ -33,6 +33,7 @@ export default function DeckMap({ initialData , salesRepSummary }: { initialData
   const [myData] = useState(initialData || []);
   const [selectedPoints, setSelectedPoints] = useState<any[]>([]);
   const [popupInfo, setPopupInfo] = useState<any>(null);
+  const [allCustomer, setAllCustomer] = useState<boolean >(false);
   const [isLassoActive, setIsLassoActive] = useState(false);
   const [isDrawing, setIsDrawing] = useState(false);
   const [pixelPath, setPixelPath] = useState<Array<[number, number]>>([]);
@@ -56,7 +57,7 @@ export default function DeckMap({ initialData , salesRepSummary }: { initialData
     window.addEventListener('click', handleClickOutside);
     return () => window.removeEventListener('click', handleClickOutside);
   }, []);
-
+  
   const filteredData = useMemo(() => {
     if (selectedSalesReps.length === 0) return myData;
     return myData.filter(d => selectedSalesReps.includes(d.salesrep));
@@ -357,21 +358,27 @@ const handleZoomToPoint = (pointObj: any) => {
           <p className="text-sm text-gray-600">Seçilen Müşteri Sayısı: <span className="font-bold text-blue-600">{selectedPoints.length}</span></p>
           <p className="text-sm text-gray-600">Seçilen Toplam Koli: <span className="font-bold text-blue-600">{selectedPoints.reduce((acc, p) => acc + (p.totalQuantity || 0), 0)}</span></p>
           <p className="text-sm text-gray-600">Seçilen Toplam Palet: <span className="font-bold text-blue-600">{selectedPoints.reduce((acc, p) => acc + (p.totalPallet || 0), 0).toFixed(2)}</span></p>
+         </div>
+         <div className="bg-white p-4 rounded-lg shadow-lg z-10 max-w-xs">
+          <h4 className="font-bold text-gray-800 mb-1">Seçilen Müşteriler</h4>
           <ul className="max-h-36 overflow-y-auto pl-4 mt-2 text-sm text-gray-700">
-            {selectedPoints.map(p => (
-              <li 
-                key={p.id} 
-                onContextMenu={(e) => {
-                  e.preventDefault(); // Tarayıcının varsayılan sağ tık menüsünü engelle
-                  setContextMenu({ x: e.clientX, y: e.clientY, point: p });
-                }}
-                className="list-disc cursor-pointer hover:text-blue-600 transition-colors select-none py-0.5"
-                title="İşlem için sağ tıklayın"
-              >
-                {p.totalQuantity} koli, {p.totalPallet?.toFixed(2)} palet {p.id} {p.customer} ({p.salesrep})
-              </li>
-            ))}
-          </ul>
+  {selectedPoints
+    .slice() // Orijinal diziyi mutasyona uğratmamak (bozmamak) için kopyalıyoruz
+    .sort((a, b) => b.totalQuantity - a.totalQuantity)
+    .map(p => (
+      <li 
+        key={p.id} 
+        onContextMenu={(e) => {
+          e.preventDefault();
+          setContextMenu({ x: e.clientX, y: e.clientY, point: p });
+        }}
+        className="list-disc cursor-pointer hover:text-blue-600 transition-colors select-none py-0.5"
+        title="İşlem için sağ tıklayın"
+      >
+        {p.totalQuantity} koli, {p.totalPallet?.toFixed(2)} palet {p.id} {p.customer} ({p.salesrep})
+      </li>
+    ))}
+</ul>
         </div>
       </div>
 
@@ -442,6 +449,40 @@ const handleZoomToPoint = (pointObj: any) => {
           </div>
         </div>
       )}
+      {/*Tüm Siparişler */}
+      <div className="absolute bottom-5 right-5 bg-white p-4 rounded-lg shadow-lg z-10 min-w-[200px] border border-gray-100">
+  {allCustomer && (  
+    <div className="bg-white p-4 rounded-lg shadow-lg z-10 max-w-xs mb-3">
+      <h4 className="font-bold text-gray-800 mb-1">Tüm Müşteriler</h4>
+      <ul className="max-h-36 overflow-y-auto pl-4 mt-2 text-sm text-gray-700">
+        {myData
+          .slice() // Orijinal diziyi mutasyona uğratmamak için kopyalıyoruz
+          .sort((a, b) => b.totalQuantity - a.totalQuantity) // Eksik olan '-' operatörü eklendi
+          .map(p => (
+            <li 
+              key={p.id} 
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setContextMenu({ x: e.clientX, y: e.clientY, point: p });
+              }}
+              className="list-disc cursor-pointer hover:text-blue-600 transition-colors select-none py-0.5"
+              title="İşlem için sağ tıklayın"
+            >
+              {p.totalQuantity} koli, {p.totalPallet?.toFixed(2)} palet {p.id} {p.customer} ({p.salesrep})
+            </li>
+          ))}
+      </ul>
+    </div>
+  )}
+  
+  <button 
+    onClick={() => setAllCustomer(!allCustomer)} 
+    className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold py-1.5 px-3 rounded transition-colors cursor-pointer"
+  >
+    {allCustomer ? "Gizle" : "Tüm Müşteriler"}
+  </button>
+</div>
+      
     </div>
   );
 }
