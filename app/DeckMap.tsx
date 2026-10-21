@@ -29,7 +29,7 @@ const getSalesRepColor = (name: string): [number, number, number] => {
   return [r, g, b];
 };
 
-export default function DeckMap({ initialData , salesRepSummary }: { initialData: any[]; salesRepSummary: any[] }) {
+export default function DeckMap({ initialData , salesRepSummary, outOfBoundsDf, outOfPalletInfo   }: { initialData: any[]; salesRepSummary: any[]; outOfBoundsDf: any[]; outOfPalletInfo: any[] }) {
   const [myData] = useState(initialData || []);
   const [selectedPoints, setSelectedPoints] = useState<any[]>([]);
   const [popupInfo, setPopupInfo] = useState<any>(null);
@@ -37,6 +37,7 @@ export default function DeckMap({ initialData , salesRepSummary }: { initialData
   const [isLassoActive, setIsLassoActive] = useState(false);
   const [isDrawing, setIsDrawing] = useState(false);
   const [pixelPath, setPixelPath] = useState<Array<[number, number]>>([]);
+  const [showOutOfBounds, setShowOutOfBounds] = useState(false);
   
   const [selectedSalesReps, setSelectedSalesReps] = useState<string[]>([]);
 
@@ -358,6 +359,75 @@ const handleZoomToPoint = (pointObj: any) => {
           <p className="text-sm text-gray-600">Seçilen Müşteri Sayısı: <span className="font-bold text-blue-600">{selectedPoints.length}</span></p>
           <p className="text-sm text-gray-600">Seçilen Toplam Koli: <span className="font-bold text-blue-600">{selectedPoints.reduce((acc, p) => acc + (p.totalQuantity || 0), 0)}</span></p>
           <p className="text-sm text-gray-600">Seçilen Toplam Palet: <span className="font-bold text-blue-600">{selectedPoints.reduce((acc, p) => acc + (p.totalPallet || 0), 0).toFixed(2)}</span></p>
+          <div className="bg-white p-4 rounded-lg shadow-lg z-10 max-w-xs">
+   <div 
+  onClick={() => setShowOutOfBounds(!showOutOfBounds)}
+  className="cursor-pointer select-none flex justify-between items-center"
+>
+  <p className={`text-sm ${outOfPalletInfo.length === 0 ? 'text-blue-600' : 'text-red-600'}`}>
+    Palet verisi olmayan <br></br> ürünler:{' '}
+    <span className={`font-bold ${outOfPalletInfo.length === 0 ? 'text-blue-600' : 'text-red-600'}`}>
+      {outOfPalletInfo.length}
+    </span>
+  </p>
+  <span className={`text-xs font-semibold ${outOfPalletInfo.length === 0 ? 'text-blue-500' : 'text-red-500'}`}>
+    {showOutOfBounds ? '▲ Gizle' : '▼ Göster'}
+  </span>
+</div>
+
+  {/* Eğer tıklandıysa açılan liste */}
+  {showOutOfBounds && (
+    <ul className="max-h-36 overflow-y-auto pl-4 mt-2 text-sm text-gray-700 border-t pt-2">
+      {outOfPalletInfo.map((p: any) => (
+        <li 
+          key={p.id} 
+          onContextMenu={(e) => {
+            e.preventDefault();
+            setContextMenu({ x: e.clientX, y: e.clientY, point: p });
+          }}
+          className="list-disc cursor-pointer hover:text-blue-600 transition-colors select-none py-0.5"
+          title="İşlem için sağ tıklayın"
+        >
+          {p.product_code} ürün kodu , {p.PaletSayisi?.toFixed(2)} Koli
+        </li>
+      ))}
+    </ul>
+  )}
+  
+  <div 
+  onClick={() => setShowOutOfBounds(!showOutOfBounds)}
+  className="cursor-pointer select-none flex justify-between items-center"
+>
+  <p className={`text-sm ${outOfBoundsDf.length === 0 ? 'text-blue-600' : 'text-red-600'}`}>
+    Konumu olmayan <br></br> müşteriler:{' '}
+    <span className={`font-bold ${outOfBoundsDf.length === 0 ? 'text-blue-600' : 'text-red-600'}`}>
+      {outOfBoundsDf.length}
+    </span>
+  </p>
+  <span className={`text-xs font-semibold ${outOfBoundsDf.length === 0 ? 'text-blue-500' : 'text-red-500'}`}>
+    {showOutOfBounds ? '▲ Gizle' : '▼ Göster'}
+  </span>
+</div>
+
+  {/* Eğer tıklandıysa açılan liste */}
+  {showOutOfBounds && (
+    <ul className="max-h-36 overflow-y-auto pl-4 mt-2 text-sm text-gray-700 border-t pt-2">
+      {outOfBoundsDf.map((p: any) => (
+        <li 
+          key={p.id} 
+          onContextMenu={(e) => {
+            e.preventDefault();
+            setContextMenu({ x: e.clientX, y: e.clientY, point: p });
+          }}
+          className="list-disc cursor-pointer hover:text-blue-600 transition-colors select-none py-0.5"
+          title="İşlem için sağ tıklayın"
+        >
+          {p.totalQuantity} koli, {p.totalPallet?.toFixed(2)} palet {p.id} {p.customer} ({p.salesrep})
+        </li>
+      ))}
+    </ul>
+  )}
+</div>
          </div>
          <div className="bg-white p-4 rounded-lg shadow-lg z-10 max-w-xs">
           <h4 className="font-bold text-gray-800 mb-1">Seçilen Müşteriler</h4>

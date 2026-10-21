@@ -69,18 +69,78 @@ async function getProcessedDataFrame() {
  console.log(joinedDf.columns)
  const paletOlmayanlar = joinedDf.filter(pl.col("Palet").isNull().or(pl.col("Palet").eq(0))).select("product_code", "PaletSayisi").unique();
 console.log("Palet Raporunda Olmayan Ürünler:", paletOlmayanlar.toString());
-const olmayanlar = birlesikDf.join(processedMus, { on: 'id', how: 'anti' });
+//const olmayanlar = birlesikDf.join(processedMus, { on: 'id', how: 'anti' });
 
-console.log("Diğer tabloda olmayanlar:", olmayanlar.toString());
+
 const missingLocationDf = joinedDf.filter(
   pl.col("lat").isNull().or(pl.col("lng").isNull().or(pl.col("lat").eq(0).or(pl.col("lng").eq(0))))
 );
 
+const outOfBoundsDf = joinedDf.filter(
+  // Check geographic boundaries
+  pl.col("lat").lt(35.795432)
+    .or(pl.col("lat").gt(37.078452))
+    .or(pl.col("lng").lt(35.560693))
+    .or(pl.col("lng").gt(37.126596))
+  // Also treat invalid/missing values as out-of-bounds
+    .or(pl.col("lat").isNull())
+    .or(pl.col("lat").isNan())
+    .or(pl.col("lat").eq(0))
+    .or(pl.col("lng").isNull())
+    .or(pl.col("lng").isNan())
+    .or(pl.col("lng").eq(0))
+).groupBy('id').agg(
+  pl.col('customer').first(),
+  pl.col('salesrep').first(),
+  pl.col('lat').first(),
+  pl.col('lng').first(),
+  pl.col('PaletSayisi').sum().alias('totalPallet'),
+  pl.col('Miktar').sum().alias('totalQuantity')
+);
+/* Fix and assign new cordinates for out-of-bounds records */
+// Define your starting point and the step size for the vertical spacing
+const startLat = 36.180744;
+const fixedLng = 35.793710;
+const stepSize = 0.01; // Adjust this to make the points closer or further apart
+
+// 1. Define your out-of-bounds / invalid condition as a reusable expression
+const isOutOfBounds = pl.col("lat").lt(35.795432)
+  .or(pl.col("lat").gt(37.078452))
+  .or(pl.col("lng").lt(35.560693))
+  .or(pl.col("lng").gt(37.126596))
+  .or(pl.col("lat").isNull())
+  .or(pl.col("lat").isNan())
+  .or(pl.col("lat").eq(0))
+  .or(pl.col("lng").isNull())
+  .or(pl.col("lng").isNan())
+  .or(pl.col("lng").eq(0));
+
+// 2. Keep the valid rows as they are (using .not())
+const validDf = joinedDf.filter(isOutOfBounds.not());
+
+
+
+const fixedOutOfBoundsDf = joinedDf.filter(isOutOfBounds)
+  .withRowIndex("row_idx")
+  .withColumns(
+    pl.lit(fixedLng).alias("lng"),
+    (pl.col("row_idx").cast(pl.Float64).mul(stepSize))
+      .add(startLat)
+      .alias("lat")
+  )
+  .drop("row_idx");
+
+// 4. Concatenate the valid rows and the fixed rows back together
+const finalDf = pl.concat([validDf, fixedOutOfBoundsDf]);
+
+console.log(`Original row count: ${joinedDf.height}`);
+console.log(`Final combined row count: ${finalDf.height}`);
+console.log("Out of Bounds Records:", outOfBoundsDf.toString());
 console.log("Konumu Olmay2an Müşteriler:", missingLocationDf.toString());
   // Konsol kontrolü
   //console.log('Joined DataFrame:', joinedDf.select("Miktar", "Palet", "PaletSayisi").head(5).toString());
 
-  return [joinedDf, missingLocationDf, olmayanlar, paletOlmayanlar];
+  return [finalDf, missingLocationDf, outOfBoundsDf, paletOlmayanlar];
 }
 
 
@@ -137,6 +197,59 @@ export async function getSalesRepSummary() {
     return summaryDf.toRecords();
   } catch (error) {
     console.error('Sales Rep Summary Error:', error);
+    return [];
+  }
+}
+export async function getOutOfBoundsDf() {
+  try {
+    // getProcessedDataFrame'den [finalDf, missingLocationDf, outOfBoundsDf, paletOlmayanlar] alıyoruz
+    const [finalDf, , outOfBoundsDf] = await getProcessedDataFrame();
+
+    // 1. Orijinal outOfBoundsDf içindeki id'lerin listesini alalım
+    const outOfBoundsIds = outOfBoundsDf.toRecords().map((r: any) => r.id);
+
+    // 2. finalDf (yani güncel ve düzeltilmiş koordinatların olduğu ana tablo) 
+    // üzerinden sadece bu id'ye sahip olanları filtreleyelim ve müşteri bazında gruplayalım
+    const fixedOutOfBoundsGrouped = finalDf
+      .filter(pl.col('id').isIn(outOfBoundsIds))
+      .groupBy('id')
+      .agg(
+        pl.col('customer').first(),
+        pl.col('salesrep').first(),
+        pl.col('lng').first(), // 👈 Düzeltilmiş yeni boylam
+        pl.col('lat').first(), // 👈 Düzeltilmiş yeni enlem
+        pl.col('Miktar').sum().alias('totalQuantity'),
+        pl.col('PaletSayisi').sum().alias('totalPallet')
+      );
+
+    // 3. Kayıtları JS objelerine çevirip Deck.GL formatına uygun coordinates ekleyelim
+    const rawRecords = fixedOutOfBoundsGrouped.toRecords();
+
+    return rawRecords.map((r: any) => ({
+      ...r,
+      coordinates: [r.lng, r.lat] // Artık haritada otomatik atanan yeni konumuna zoom yapacak!
+    }));
+
+  } catch (error) {
+    console.error('Out of Bounds Records Error:', error);
+    return [];
+  }
+}
+
+export async function getOutOfPalletInfo() {
+  try {
+    // getProcessedDataFrame'den [finalDf, missingLocationDf, outOfBoundsDf, paletOlmayanlar] alıyoruz
+    const [, , , paletOlmayanlar]= await getProcessedDataFrame();
+
+    // 1. Orijinal outOfBoundsDf içindeki id'lerin listesini alalım
+    const outOfPallet = paletOlmayanlar.toRecords()
+
+   console.log("Palet Raporunda Olmayan Ürünler:", outOfPallet);
+
+    return outOfPallet
+
+  } catch (error) {
+    console.error('Out of Pallet Records Error:', error);
     return [];
   }
 }

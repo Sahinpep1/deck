@@ -12,7 +12,7 @@ const nextConfig: NextConfig = {
       },
     },
   },
-  allowedDevOrigins: ["192.168.10.111","172.29.96.1","192.168.113.15"],
+  allowedDevOrigins: ["192.168.10.111","172.29.96.1","192.168.113.15","192.168.113.12"],
   serverExternalPackages: ['nodejs-polars'],
 };
 

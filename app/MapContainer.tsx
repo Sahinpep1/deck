@@ -8,6 +8,6 @@ const DeckMap = dynamic(() => import('./DeckMap'), {
   loading: () => <p className="p-4 text-center">Harita yükleniyor...</p>
 });
 
-export default function MapContainer({ initialData, salesRepSummary }: { initialData: any[]; salesRepSummary: any[] }) {
-  return <DeckMap initialData={initialData} salesRepSummary={salesRepSummary} />;
+export default function MapContainer({ initialData, salesRepSummary, outOfBoundsDf, outOfPalletInfo }: { initialData: any[]; salesRepSummary: any[]; outOfBoundsDf: any[]; outOfPalletInfo: any[] }) {
+  return <DeckMap initialData={initialData} salesRepSummary={salesRepSummary} outOfBoundsDf={outOfBoundsDf} outOfPalletInfo={outOfPalletInfo} />;
 }
