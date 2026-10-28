@@ -6,6 +6,7 @@ import { Map, MapRef } from 'react-map-gl/maplibre';
 import { IconLayer, TextLayer } from '@deck.gl/layers';
 import booleanPointInPolygon from '@turf/boolean-point-in-polygon';
 import { polygon, point } from '@turf/helpers';
+import RefreshDataButton  from './components/RefreshDataButton'
 
 import 'maplibre-gl/dist/maplibre-gl.css';
 
@@ -30,7 +31,7 @@ const getSalesRepColor = (name: string): [number, number, number] => {
 };
 
 export default function DeckMap({ initialData , salesRepSummary, outOfBoundsDf, outOfPalletInfo   }: { initialData: any[]; salesRepSummary: any[]; outOfBoundsDf: any[]; outOfPalletInfo: any[] }) {
-  const [myData] = useState(initialData || []);
+  
   const [selectedPoints, setSelectedPoints] = useState<any[]>([]);
   const [popupInfo, setPopupInfo] = useState<any>(null);
   const [allCustomer, setAllCustomer] = useState<boolean >(false);
@@ -41,6 +42,10 @@ export default function DeckMap({ initialData , salesRepSummary, outOfBoundsDf, 
   
   const [selectedSalesReps, setSelectedSalesReps] = useState<string[]>([]);
 
+  // Toplam hesaplamalarında da doğrudan initialData kullanılması için:
+  const totalCount = initialData?.length || 0;
+  const totalQuantity = useMemo(() => (initialData || []).reduce((acc, p) => acc + (p.totalQuantity || 0), 0), [initialData]);
+  const totalPallet = useMemo(() => (initialData || []).reduce((acc, p) => acc + (p.totalPallet || 0), 0), [initialData]);
   // Sağ tık menüsü için state'ler
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; point: any } | null>(null);
   const [viewState, setViewState] = useState({
@@ -59,10 +64,12 @@ export default function DeckMap({ initialData , salesRepSummary, outOfBoundsDf, 
     return () => window.removeEventListener('click', handleClickOutside);
   }, []);
   
+  // 🚀 ÖNEMLİ DÜZELTME: initialData değiştiğinde (router.refresh tetiklendiğinde) harita verisi güncellenir
   const filteredData = useMemo(() => {
-    if (selectedSalesReps.length === 0) return myData;
-    return myData.filter(d => selectedSalesReps.includes(d.salesrep));
-  }, [myData, selectedSalesReps]);
+    const data = initialData || [];
+    if (selectedSalesReps.length === 0) return data;
+    return data.filter(d => selectedSalesReps.includes(d.salesrep));
+  }, [initialData, selectedSalesReps]);
   // Popup üzerinden seçilenlere ekleme/kaldırma fonksiyonu
   const handleToggleSelectPoint = (pointObj: any) => {
     setSelectedPoints(prev => {
@@ -275,7 +282,7 @@ const handleZoomToPoint = (pointObj: any) => {
 
       {/* Arayüz Butonları ve Paneller */}
       <div className="absolute top-5 left-5 rounded-lg shadow-lg z-10 flex flex-col gap-4 max-w-xs">
-        <div className="bg-white p-1 rounded-lg">
+        <div className="bg-white p-1 rounded-lg flex flex-col gap-1.5">
           <button 
             onClick={() => {
               setIsLassoActive(!isLassoActive);
@@ -288,13 +295,14 @@ const handleZoomToPoint = (pointObj: any) => {
           >
             {isLassoActive ? 'Lasso Modunu Kapat' : 'Lasso ile Alan Seç'}
           </button>
+          <div><RefreshDataButton/></div>
         </div>
-
+          
         <div id="toplam" className="bg-white p-4 rounded-lg shadow-lg z-10 max-w-xs">
           <h3 className="font-bold text-gray-800 mb-1">Tüm Siparişler</h3>
-          <p className="text-sm text-gray-600">Tüm Siparişler: <span className="font-bold text-blue-600">{myData.length}</span></p>
-          <p className="text-sm text-gray-600">Toplam Koli: <span className="font-bold text-blue-600">{myData.reduce((acc, p) => acc + (p.totalQuantity || 0), 0)}</span></p>
-          <p className="text-sm text-gray-600">Toplam Palet: <span className="font-bold text-blue-600">{myData.reduce((acc, p) => acc + (p.totalPallet || 0), 0).toFixed(2)}</span></p>
+          <p className="text-sm text-gray-600">Tüm Siparişler: <span className="font-bold text-blue-600">{totalCount}</span></p>
+          <p className="text-sm text-gray-600">Toplam Koli: <span className="font-bold text-blue-600">{totalQuantity}</span></p>
+          <p className="text-sm text-gray-600">Toplam Palet: <span className="font-bold text-blue-600">{totalPallet}</span></p>
         </div>  
 
         <div className="bg-white p-4 rounded-lg shadow-lg z-10 max-w-xs">
@@ -525,7 +533,7 @@ const handleZoomToPoint = (pointObj: any) => {
     <div className="bg-white p-4 rounded-lg shadow-lg z-10 max-w-xs mb-3">
       <h4 className="font-bold text-gray-800 mb-1">Tüm Müşteriler</h4>
       <ul className="max-h-36 overflow-y-auto pl-4 mt-2 text-sm text-gray-700">
-        {myData
+        {initialData
           .slice() // Orijinal diziyi mutasyona uğratmamak için kopyalıyoruz
           .sort((a, b) => b.totalQuantity - a.totalQuantity) // Eksik olan '-' operatörü eklendi
           .map(p => (
