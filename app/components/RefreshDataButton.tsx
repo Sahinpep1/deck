@@ -1,58 +1,135 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useState, useTransition, useEffect } from 'react';
+
+const getLocalDateString = (date: Date = new Date()): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const calculateDayOffset = (selectedDateStr: string): number => {
+  const [sYear, sMonth, sDay] = selectedDateStr.split('-').map(Number);
+  const selectedDate = new Date(sYear, sMonth - 1, sDay);
+  
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  const msPerDay = 1000 * 60 * 60 * 24;
+  return Math.round((selectedDate.getTime() - today.getTime()) / msPerDay);
+};
 
 export default function RefreshDataButton() {
   const router = useRouter();
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [loadingText, setLoadingText] = useState('Verileri Yenile');
+  const [isPending, startTransition] = useTransition();
+  const [isBotRunning, setIsBotRunning] = useState(false);
+  
+  const [selectedDate, setSelectedDate] = useState<string>(() => getLocalDateString());
+
+  // Süre ve Son Güncelleme Takibi İçin State'ler
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [lastStats, setLastStats] = useState<{ time: string; duration: string } | null>(null);
+
+  // Bot çalışırken saniye sayacı
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    
+    if (isBotRunning) {
+      // Doğrudan effect gövdesinde senkron çağrı yapmak yerine 
+      // interval kurulumundan hemen önce veya state değişim anında yönetiyoruz
+      interval = setInterval(() => {
+        setElapsedSeconds((prev) => prev + 1);
+      }, 1000);
+    }
+
+    return () => clearInterval(interval);
+  }, [isBotRunning]);
 
   const handleRefresh = async () => {
-    // Kullanıcıya onay sorusu çıkartıyoruz
+    const dayOffset = calculateDayOffset(selectedDate);
+
     const shouldFetchNewData = window.confirm(
-      "🔄 Yeni veriler PEPSELL'den çekilsin mi?\n\n(Tamam: Bot çalışıp güncel verileri indirecek - Birkaç saniye sürebilir)\n(İptal: Sadece mevcut verilerle sayfayı tazele)"
+      `🔄 ${selectedDate} tarihi için veriler PEPSELL'den çekilsin mi?\n(Gün Farkı Offset: ${dayOffset})\n\n(Tamam: Bot çalışıp verileri indirecek)\n(İptal: Sadece sayfayı tazele)`
     );
 
-    setIsRefreshing(true);
-
-    try {
-      if (shouldFetchNewData) {
-        setLoadingText('Bot çalışıyor...');
+    if (shouldFetchNewData) {
+      setIsBotRunning(true);
+      setElapsedSeconds(0);
+      try {
+        const apiUrl = process.env.NEXT_PUBLIC_BOT_API_URL || 'http://localhost:4000/api/run-automation';
         
-        // Hono API üzerinden otomasyonu tetikliyoruz
-        const response = await fetch('http://localhost:4000/api/run-automation', {
+        const response = await fetch(apiUrl, {
           method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dayOffset, selectedDate }),
         });
 
-        if (!response.ok) {
-          throw new Error('Otomasyon çalıştırılamadı!');
-        }
-        
-        setLoadingText('Güncelleniyor...');
-      } else {
-        setLoadingText('Yenileniyor...');
-      }
+        const result = await response.json();
 
-      // Next.js önbelleğini temizleyerek yeni/güncel verileri sayfaya yansıtıyoruz
-      router.refresh();
-    } catch (error) {
-      console.error('Güncelleme sırasında hata:', error);
-      alert('Veriler güncellenirken bir hata oluştu.');
-    } finally {
-      setIsRefreshing(false);
-      setLoadingText('Verileri Yenile');
+        if (!response.ok || !result.success) {
+          throw new Error(result.error || 'Otomasyon çalıştırılamadı!');
+        }
+
+        // Backend'den gelen süre ve saat bilgilerini sete ediyoruz
+        if (result.updatedAt && result.duration) {
+          setLastStats({ time: result.updatedAt, duration: result.duration });
+        }
+      } catch (error) {
+        console.error('Bot çalıştırma hatası:', error);
+        alert('Veriler güncellenirken bir hata oluştu.');
+        setIsBotRunning(false);
+        return;
+      } finally {
+        setIsBotRunning(false);
+      }
     }
+
+    startTransition(() => {
+      router.refresh();
+    });
+  };
+
+  const isLoading = isBotRunning || isPending;
+
+  const getButtonText = () => {
+    if (isBotRunning) return `Bot çalışıyor... (${elapsedSeconds}s)`;
+    if (isPending) return 'Sayfa Yenileniyor...';
+    return 'Verileri Yenile';
   };
 
   return (
-    <button
-      onClick={handleRefresh}
-      disabled={isRefreshing}
-      className="flex items-center justify-center gap-2 px-4 py-2 w-full bg-slate-800 text-white rounded-lg shadow hover:bg-slate-700 transition active:scale-95 disabled:opacity-50 cursor-pointer"
-    >
-      <span className={`${isRefreshing ? 'animate-spin' : ''}`}>🔄</span>
-      <span>{isRefreshing ? loadingText : 'Verileri Yenile'}</span>
-    </button>
+    <div className="flex flex-col gap-2 w-full">
+      {/* Tarih Seçici */}
+      <div className="flex items-center justify-between bg-slate-900 px-3 py-2 rounded-lg border border-slate-700 text-white text-sm">
+        <span className="text-slate-400">Hedef Tarih:</span>
+        <input 
+          type="date" 
+          value={selectedDate}
+          onChange={(e) => setSelectedDate(e.target.value)}
+          disabled={isLoading}
+          className="bg-slate-800 text-white px-2 py-1 rounded border border-slate-600 focus:outline-none focus:border-blue-500 cursor-pointer disabled:opacity-50"
+        />
+      </div>
+
+      {/* Yenileme Butonu */}
+      <button
+        onClick={handleRefresh}
+        disabled={isLoading}
+        className="flex items-center justify-center gap-2 px-4 py-2 w-full bg-slate-800 text-white rounded-lg shadow hover:bg-slate-700 transition active:scale-95 disabled:opacity-50 cursor-pointer"
+      >
+        <span className={`${isLoading ? 'animate-spin' : ''}`}>🔄</span>
+        <span>{getButtonText()}</span>
+      </button>
+
+      {/* Son İşlem Bilgisi (Opsiyonel Bilgi Alanı) */}
+      {lastStats && !isLoading && (
+        <div className="flex justify-between items-center px-2 text-xs text-slate-400">
+          <span>🕒 Son Güncelleme: <strong className="text-slate-300">{lastStats.time}</strong></span>
+          <span>⚡ Süre: <strong className="text-emerald-400">{lastStats.duration}s</strong></span>
+        </div>
+      )}
+    </div>
   );
 }
