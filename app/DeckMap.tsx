@@ -227,7 +227,7 @@ const handleZoomToPoint = (pointObj: any) => {
         height: '100vh', 
         position: 'relative', 
         overflow: 'hidden',
-        cursor: isLassoActive ? 'crosshair' : 'default' 
+        
       }}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
@@ -237,7 +237,10 @@ const handleZoomToPoint = (pointObj: any) => {
           viewState={viewState}
           onViewStateChange={(e: any) => setViewState(e.viewState)}
           controller={!isDrawing}
-          layers={[pointsLayer]}
+          layers={[pointsLayer]}getCursor={({ isDragging }) => {
+    if (isLassoActive) return 'crosshair';
+    return isDragging ? 'grabbing' : 'grab';
+  }}
           style={{ width: '100%', height: '100%', position: 'absolute' }}
         >
         <Map
