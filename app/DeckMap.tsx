@@ -286,18 +286,7 @@ const handleZoomToPoint = (pointObj: any) => {
       {/* Arayüz Butonları ve Paneller */}
       <div className="absolute top-5 left-5 rounded-lg shadow-lg z-10 flex flex-col gap-4 max-w-xs">
         <div className="bg-white p-1 rounded-lg flex flex-col gap-1.5">
-          <button 
-            onClick={() => {
-              setIsLassoActive(!isLassoActive);
-              setSelectedPoints([]);
-              setPixelPath([]);
-            }}
-            className={`px-4 py-2 rounded-md font-bold text-white transition-colors cursor-pointer w-full ${
-              isLassoActive ? 'bg-red-500 hover:bg-red-600' : 'bg-blue-500 hover:bg-blue-600'
-            }`}
-          >
-            {isLassoActive ? 'Lasso Modunu Kapat' : 'Lasso ile Alan Seç'}
-          </button>
+          
           <div><RefreshDataButton/></div>
         </div>
           
@@ -442,6 +431,18 @@ const handleZoomToPoint = (pointObj: any) => {
          </div>
          <div className="bg-white p-4 rounded-lg shadow-lg z-10 max-w-xs">
           <h4 className="font-bold text-gray-800 mb-1">Seçilen Müşteriler</h4>
+          <button 
+            onClick={() => {
+              setIsLassoActive(!isLassoActive);
+              //setSelectedPoints([]);
+              setPixelPath([]);
+            }}
+            className={`px-2 py-2 rounded-md font-bold text-white transition-colors cursor-pointer w-full ${
+              isLassoActive ? 'bg-red-500 hover:bg-red-600' : 'bg-blue-500 hover:bg-blue-600'
+            }`}
+          >
+            {isLassoActive ? 'Lasso Modunu Kapat' : 'Lasso ile Alan Seç'}
+          </button>
           <ul className="max-h-36 overflow-y-auto pl-4 mt-2 text-sm text-gray-700">
   {selectedPoints
     .slice() // Orijinal diziyi mutasyona uğratmamak (bozmamak) için kopyalıyoruz
