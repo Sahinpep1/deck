@@ -351,6 +351,52 @@ const handleZoomToPoint = (pointObj: any) => {
             <p className="text-xs text-gray-400">Veri yok.</p>
           )}
         </div>
+          {popupInfo && (
+        <div className=" bg-white p-4 rounded-lg shadow-lg z-10 min-w-[200px] border border-gray-100">
+          <h4 className="font-bold text-gray-800 border-b pb-1 mb-2">Müşteri Detayı</h4>
+          <p className="text-sm text-gray-600 mb-1">
+            <span className="font-semibold text-gray-700">İsim:</span> {popupInfo.customer}
+          </p>
+          <p className="text-sm text-gray-600 mb-1">
+            <span className="font-semibold text-gray-700">Id:</span> {popupInfo.id}
+          </p>
+          <p className="text-sm text-gray-600 mb-3">
+            <span className="font-semibold text-gray-700">Plasiyer:</span> {popupInfo.salesrep}
+          </p>
+          <p className="text-sm text-gray-600 mb-3">
+            <span className="font-semibold text-gray-700">Toplam Koli:</span> {popupInfo.totalQuantity}
+          </p>
+          <p className="text-sm text-gray-600 mb-3">
+            <span className="font-semibold text-gray-700">Toplam Palet:</span> {popupInfo.totalPallet.toFixed(2)}
+          </p>
+
+          <div className="flex flex-col gap-2">
+            {/* Dinamik Seçilenlere Ekle / Kaldır Butonu */}
+            {(() => {
+              const isSelected = selectedPoints.some(p => p.id === popupInfo.id);
+              return (
+                <button 
+                  onClick={() => handleToggleSelectPoint(popupInfo)}
+                  className={`w-full text-xs font-semibold py-1.5 px-3 rounded transition-colors cursor-pointer text-white ${
+                    isSelected 
+                      ? 'bg-red-500 hover:bg-red-600' 
+                      : 'bg-blue-500 hover:bg-blue-600'
+                  }`}
+                >
+                  {isSelected ? '❌ Seçilenlerden Kaldır' : '➕ Seçilenlere Ekle'}
+                </button>
+              );
+            })()}
+
+            <button 
+              onClick={() => setPopupInfo(null)}
+              className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold py-1.5 px-3 rounded transition-colors cursor-pointer"
+            >
+              Kapat
+            </button>
+          </div>
+        </div>
+      )}
       </div>
 
       <div id="secilenler" className="absolute top-5 right-5 z-10 flex flex-col gap-4 max-w-xs">
@@ -485,52 +531,7 @@ const handleZoomToPoint = (pointObj: any) => {
         </div>
       )}
 
-      {popupInfo && (
-        <div className="absolute bottom-5 left-5 bg-white p-4 rounded-lg shadow-lg z-10 min-w-[200px] border border-gray-100">
-          <h4 className="font-bold text-gray-800 border-b pb-1 mb-2">Müşteri Detayı</h4>
-          <p className="text-sm text-gray-600 mb-1">
-            <span className="font-semibold text-gray-700">İsim:</span> {popupInfo.customer}
-          </p>
-          <p className="text-sm text-gray-600 mb-1">
-            <span className="font-semibold text-gray-700">Id:</span> {popupInfo.id}
-          </p>
-          <p className="text-sm text-gray-600 mb-3">
-            <span className="font-semibold text-gray-700">Plasiyer:</span> {popupInfo.salesrep}
-          </p>
-          <p className="text-sm text-gray-600 mb-3">
-            <span className="font-semibold text-gray-700">Toplam Koli:</span> {popupInfo.totalQuantity}
-          </p>
-          <p className="text-sm text-gray-600 mb-3">
-            <span className="font-semibold text-gray-700">Toplam Palet:</span> {popupInfo.totalPallet.toFixed(2)}
-          </p>
-
-          <div className="flex flex-col gap-2">
-            {/* Dinamik Seçilenlere Ekle / Kaldır Butonu */}
-            {(() => {
-              const isSelected = selectedPoints.some(p => p.id === popupInfo.id);
-              return (
-                <button 
-                  onClick={() => handleToggleSelectPoint(popupInfo)}
-                  className={`w-full text-xs font-semibold py-1.5 px-3 rounded transition-colors cursor-pointer text-white ${
-                    isSelected 
-                      ? 'bg-red-500 hover:bg-red-600' 
-                      : 'bg-blue-500 hover:bg-blue-600'
-                  }`}
-                >
-                  {isSelected ? '❌ Seçilenlerden Kaldır' : '➕ Seçilenlere Ekle'}
-                </button>
-              );
-            })()}
-
-            <button 
-              onClick={() => setPopupInfo(null)}
-              className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold py-1.5 px-3 rounded transition-colors cursor-pointer"
-            >
-              Kapat
-            </button>
-          </div>
-        </div>
-      )}
+      
       {/*Tüm Siparişler */}
       <div className="absolute bottom-5 right-5 bg-white p-4 rounded-lg shadow-lg z-10 min-w-[200px] border border-gray-100">
   {allCustomer && (  
