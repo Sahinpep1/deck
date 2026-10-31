@@ -232,6 +232,8 @@ const handleZoomToPoint = (pointObj: any) => {
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
+      onContextMenu={(e) => e.preventDefault()}
+      
     >
       <DeckGL
           viewState={viewState}
